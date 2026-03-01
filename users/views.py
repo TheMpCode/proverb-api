@@ -1,5 +1,5 @@
 
-from operator import ge
+########### IMPORTATIONS ############
 
 from django.core.cache import cache # STOCKER LE CACHE POUR LES CODES OTP
 from rest_framework import generics # VUES GENERIQUES POUR SIMPLIFIER LA CREATION DE VUES BASIQUES
@@ -7,11 +7,18 @@ from rest_framework import generics # VUES GENERIQUES POUR SIMPLIFIER LA CREATIO
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from .serializers import UserRegistrationSerializer, PasswordlessLoginSerializer
 from django.contrib.auth import get_user_model
 
 import random # POUR GENERER UN CODE OTP ALEATOIRE
+
+from rest_framework_simplejwt.tokens import RefreshToken # POUR GERER LES TOKENS JWT APRES LA VERIFICATION OTP
+
+#########################################
+
+
+
 
 
 # ==> ON RECUPERE LE MODELE USER PERSONNALISE
@@ -96,12 +103,37 @@ class VerifyOTPView(APIView):
             # SI CORRESPONDANCE, ON SUPPRIME LE CODE OTP DU CACHE
             cache.delete(f"opt_{email}")
 
-            return Response(
-                {"message": "Bon Retour Parmis Nous !"},
-                status=status.HTTP_200_OK
+            # ON RECUPERE L'UTILISATEUR AVEC L'EMAIL FOURNI OU ON LE CREE S'IL N'EXISTE PAS
+            user, created = User.objects.get_or_create(email=email, defaults={"username": email.split("@")[0]}) # On utilise la partie avant @ comme username par défaut
+
+            # ON GENERE UN TOKEN
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                "message": "Bon Retour Parmis Nous !",
+                "access" : str(refresh.access_token),
+                "refresh" : str(refresh),
+                "user" : {
+                    "id" : user.id,
+                    "email" : user.email,
+                }
+            },
+                status=status.HTTP_200_OK 
             )
         
         return Response(
             {"error": "Code OTP invalide ou expiré"},
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class SecretDataView(APIView):
+    """ VUE PROTEGEE QUI REQUIERT UNE AUTHENTIFICATION PAR TOKEN JWT"""
+
+    permission_classes = [IsAuthenticated] # Seuls les utilisateurs authentifiés peuvent accéder à cette vue
+
+    def get(self, request):
+        return Response(
+            {"message" : f"Bravo {request.user.email} ! Tu peux voir ce message privé car tu es authentifié avec un token JWT valide."},
+            status=status.HTTP_200_OK
         )

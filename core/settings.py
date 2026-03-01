@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'users',
     'rest_framework',
+    'rest_framework_simplejwt',
 
 ]
 
@@ -131,3 +132,21 @@ CACHES = {
         }
     }
 }
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+# ==> CONFIGURATION DE LA DUREE DE VIE DES TOKENS JWT
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # DUREE DE VIE DU TOKEN D'ACCES (60 minutes)
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1), # DUREE DE VIE DU TOKEN DE REFRESH (1 jour)
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
