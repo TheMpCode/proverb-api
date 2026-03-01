@@ -1,8 +1,10 @@
 
-from django.core.cache import cache
-from rest_framework import generics
+from operator import ge
 
-from rest_framework import viewsets, status
+from django.core.cache import cache # STOCKER LE CACHE POUR LES CODES OTP
+from rest_framework import generics # VUES GENERIQUES POUR SIMPLIFIER LA CREATION DE VUES BASIQUES
+
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
@@ -17,8 +19,9 @@ User = get_user_model()
 
 
 
-class UserRegistrationViewSet(viewsets.ModelViewSet):
-    """ViewSet pour l'inscription des utilisateurs"""
+class UserRegistrationViewSet(generics.CreateAPIView):
+    """ CreateAPIView est une vue generique qui fournit une implementation de la methode POST pour creer un nouvel objet dans la base de données"""
+
 
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny] # On permet à tout le monde de s'inscrire
@@ -29,20 +32,13 @@ class UserRegistrationViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Surcharge de la méthode create pour personnaliser la réponse après l'inscription"""
 
-        # ==> ON VALIDE LES DONNEES ENTRANTES AVEC LE SERIALIZER
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        # ==> ON UTILISE LA METHODE PERFORM_CREATE POUR CREER L'UTILISATEUR AVEC LES DONNEES VALIDEES
-        self.perform_create(serializer)
-
+        response = super().create(request, *args, **kwargs) # On appelle la méthode create de la classe parente pour créer l'utilisateur
         return Response(
-            {
-                "message" : "Utilisateur crée avec succès"
-            },
+            {"message" : "Inscription réussie ! Vous pouvez maintenant vous connecter avec votre email"},
             status=status.HTTP_201_CREATED
         )
     
+
 
 class RequestOTPView(APIView):
     """ VUE POUR DEMANDER UN CODE OTP POUR SE CONNECTER
@@ -62,6 +58,11 @@ class RequestOTPView(APIView):
 
             otp_code = str(random.randint(100000, 999999)) # On genere un code OTP aleatoire a 6 chiffres
 
+            # ==> ON STOCKE LE CODE OTP DANS REDIS
+            # ==> (clé: email, valeur: code, duree: 5min(300 secondes))
+
+            cache.set(f"opt_{email}", otp_code, timeout=300) # 300 secondes = 5 minutes
+
             # SIMULATION D'ENVOI
             print(f"Code OTP à {email}")
             print(f"Votre code OTP est : {otp_code}")
@@ -78,25 +79,29 @@ class RequestOTPView(APIView):
             )
 
 
-
-
+            
 class VerifyOTPView(APIView):
     """ VUE DE VERIFCATION DU CODE OTP ENVOYE"""
 
     def post(self, request):
 
+        # ==> ON RECUPERE L'EMAIL ET LE CODE OTP FOURNI DANS LA REQUETE
         email = request.data.get("email")
-        code = request.data.get("code")
+        code_recu = request.data.get("code")
 
-        if code:
+        # ==> ON RECUPERE LE CODE OTP STOCKE DANS REDIS
+        code_stocke = cache.get(f"opt_{email}")
+
+        if code_stocke and code_recu == code_stocke:
+            # SI CORRESPONDANCE, ON SUPPRIME LE CODE OTP DU CACHE
+            cache.delete(f"opt_{email}")
+
             return Response(
-                {"message" : "Bon retour parmis nous !",
-                 "email" : email
-                },
+                {"message": "Bon Retour Parmis Nous !"},
                 status=status.HTTP_200_OK
             )
-        else:
-            return Response(
-                {"error" : "Code OTP invalide"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        
+        return Response(
+            {"error": "Code OTP invalide ou expiré"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
